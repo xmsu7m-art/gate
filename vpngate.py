@@ -85,9 +85,8 @@ EDGE_HOSTS = [
     h.strip()
     for h in os.environ.get(
         "EDGE_HOSTS",
-        "[2606:4700:d0::2001]:443,[2606:4700:3037::6815:2c8a]:443,[2606:4700:3031::681f:5c8a]:443,[2606:4700:20::681a:4c8a]:443,[2606:4700:16::6814:2c8a]:443,[2606:4700:10::6814:1c8a]:443,"
-        "time.is:443,cloudflare.182682.xyz:443,www.vmware.com:443,uspto.gov:443,spring.io:443,linear.app:443,pastebin.com:443,speed.cloudflare.com:443,icook.tw:443,www.wto.org:443,ip.sb:443,"
-        "saas.sin.fan:443,cdn.204910.best:443,www.mfyx.cn:443,p.etime.vip:443,cdn.ctn32.us.kg:443",
+        "[2606:4700:d0::2001]:443,[2606:4700:3037::6815:2c8a]:443,[2606:4700:3031::681f:5c8a]:443,[2606:4700:20::681a:4c8a]:443,[2606:4700:16::6814:2c8a]:443,[2606:4700:10::6814:1c8a]:443,172.66.0.118:443,172.66.0.118:443,172.66.0.118:443,"
+        "time.is:443,cloudflare.182682.xyz:443,saas.sin.fan:443,cdn.204910.best:443",
     ).split(",")
     if h.strip()
 ]
