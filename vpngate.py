@@ -13,6 +13,7 @@ VPN Gate SSTP 节点检测流水线 (精简版)
 
 import base64
 import csv
+import hashlib
 import io
 import json
 import os
@@ -48,6 +49,9 @@ MAX_CHECK_NODES = int(os.environ.get("MAX_CHECK_NODES", "0"))
 HTTP_TIMEOUT = int(os.environ.get("HTTP_TIMEOUT", "60"))
 PUBLIC_DIR = os.environ.get("PUBLIC_DIR", os.path.join(REPO_DIR, "public"))
 TEMPLATE_HTML = os.path.join(REPO_DIR, "web", "index.html")
+# edgetunnel 订阅地址(仓库 Secret SUB_URL): 设置后每轮把订阅快照镜像进 public/
+# 文件名 = sub-<sha256(SUB_URL)前12位>.txt, 主域名/Worker 失效时客户端可改拉 Pages 镜像
+SUB_URL = os.environ.get("SUB_URL", "").strip()
 
 DATA_CENTER_ORG_KEYWORDS = [
     "GOOGLE", "AMAZON", "AWS", "MICROSOFT", "OVH", "HETZNER", "DIGITALOCEAN",
@@ -85,8 +89,9 @@ EDGE_HOSTS = [
     h.strip()
     for h in os.environ.get(
         "EDGE_HOSTS",
-        "[2606:4700:d0::2001]:443,[2606:4700:3037::6815:2c8a]:443,[2606:4700:3031::681f:5c8a]:443,[2606:4700:20::681a:4c8a]:443,[2606:4700:16::6814:2c8a]:443,[2606:4700:10::6814:1c8a]:443,172.66.0.118:443,172.66.0.118:443,172.66.0.118:443,"
-        "time.is:443,cloudflare.182682.xyz:443,saas.sin.fan:443,cdn.204910.best:443",
+        "saas.sin.fan:443,cdn.204910.best:443,www.mfyx.cn:443,p.etime.vip:443,cdn.ctn32.us.kg:443,cf.877774.xyz:443,spring.io:443,"
+        "cf.nyanya.moe:443,www.sloomb.com:443,op.chinwa.eu.cc:443,www.leics.police.uk:443,securecircle.com:443,www.shopify.com:443,"
+        "www.carousell.sg:443,www.dbs.com.sg:443,openai.com:443,linear.app:443,www.bilibili.com:443,uspto.gov:443,www.vmware.com:443",
     ).split(",")
     if h.strip()
 ]
@@ -95,7 +100,7 @@ EDGE_HOSTS = [
 OPTIMAL_API = os.environ.get("OPTIMAL_API", "https://cf.090227.xyz/ct?ips=6&port=443")
 
 # ★ NODES_URL: fork 后把下方域名中的占位用户名换成你自己的 GitHub 用户名 (仅用于日志提示)
-NODES_URL = os.environ.get("NODES_URL", "https://xmsu7m-art.github.io/gate/nodes.txt")
+NODES_URL = os.environ.get("NODES_URL", "https://YOUR_GITHUB_USERNAME.github.io/gate/nodes.txt")
 
 # ---------------------------------------------------------------------------
 # 日志
@@ -465,6 +470,34 @@ def write_outputs(data, edge_hosts):
 
     return data_path, html_path, nodes_path
 
+def mirror_subscription(session):
+    """
+    把 edgetunnel 订阅内容快照进 public/, 供主订阅域名失效时应急拉取。
+    文件名用 SUB_URL 的 sha256 前 12 位, 不暴露订阅地址本身。
+    镜像属尽力而为: 失败只告警, 不影响节点发布主流程。
+    """
+    if not SUB_URL:
+        log("SUB MIRROR", "未设置 SUB_URL (仓库 Secret), 跳过订阅镜像")
+        return None
+    name = "sub-" + hashlib.sha256(SUB_URL.encode("utf-8")).hexdigest()[:12] + ".txt"
+    for attempt in range(3):
+        try:
+            r = session.get(SUB_URL, timeout=HTTP_TIMEOUT)
+            r.raise_for_status()
+            body = r.content
+            if len(body) < 50:
+                raise RuntimeError(f"订阅响应过短 ({len(body)} bytes)")
+            path = os.path.join(PUBLIC_DIR, name)
+            with open(path, "wb") as f:
+                f.write(body)
+            log("SUB MIRROR", f"订阅快照 {len(body)} bytes -> {name}")
+            return name
+        except Exception as exc:
+            log("SUB MIRROR", f"try{attempt+1} 失败: {type(exc).__name__}: {exc}")
+            time.sleep(2)
+    log("SUB MIRROR", "订阅镜像失败 (不影响本轮节点发布); 主订阅仍以 Worker 实时内容为准")
+    return None
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -515,6 +548,11 @@ def main():
     log("WEBSITE", f"生成 {os.path.relpath(data_path, REPO_DIR)}")
     log("WEBSITE", f"生成 {os.path.relpath(html_path, REPO_DIR)}")
     log("WEBSITE", f"生成 {os.path.relpath(nodes_path, REPO_DIR)}")
+
+    mirror_name = mirror_subscription(session)
+    if mirror_name:
+        log("SUB MIRROR", f"Pages 镜像地址: https://<user>.github.io/gate/{mirror_name}")
+
     log("USAGE", f"自动轮换: 把 {NODES_URL} 填入 edgetunnel 后台「自定义优选IP」框 (一次配置, 之后自动更新)")
     log("WEBSITE", "完成 (GitHub Pages 部署由 workflow 执行)")
 
